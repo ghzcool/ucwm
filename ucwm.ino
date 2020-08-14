@@ -26,9 +26,7 @@ WiFiServer server(webServerPort);
 
 // Variable to store the HTTP request
 String header;
-
-// Auxiliar variables to store the current output state
-String outputLedState = "off";
+bool shouldRedirect = false;
 
 // Variables to store ssid, pass and file for SPIFFS
 String wifi_ssid = "";
@@ -113,6 +111,30 @@ void connectToWiFi() {
   Serial.println("");
 }
 
+void disconnectFromWiFi() {
+  Serial.print("Disconnecting ... ");
+  wifi_ssid = "";
+  wifi_pass = "";
+  saveWiFi();
+  WiFi.disconnect();
+  Serial.println("done");
+  Serial.println("");
+}
+
+void saveWiFi() {
+  Serial.print("Saving WiFi ... ");
+  
+  file = SPIFFS.open("wifi_ssid", "w+");
+  file.write(wifi_ssid.c_str());
+  file.close();
+  file = SPIFFS.open("wifi_pass", "w+");
+  file.write(wifi_pass.c_str());
+  file.close();
+  
+  Serial.println("done");
+  Serial.println("");
+}
+
 bool isWiFiConnected() {
   return WiFi.status() == WL_CONNECTED;
 }
@@ -141,8 +163,7 @@ void setup() {
   
   // Initialize the output variables as outputs
   pinMode(LED_BUILTIN, OUTPUT);
-  // Set outputs to LOW
-  digitalWrite(LED_BUILTIN, LOW);
+  digitalWrite(LED_BUILTIN, 0);
 
   loadData();
   if(canConnectToWiFi()) {
@@ -153,6 +174,24 @@ void setup() {
   
   Serial.print("Started");
   Serial.println("");
+}
+
+bool handleWebRequest(String header) {
+  shouldRedirect = false;
+  if (header.indexOf("GET /wconnect") >= 0) {
+    int ssidIndex = header.indexOf("?wssid=");
+    int passIndex = header.indexOf("&wpass=", ssidIndex);
+    wifi_ssid = header.substring(ssidIndex + 7, passIndex);
+    wifi_pass = header.substring(passIndex + 7, header.indexOf("&connect", passIndex + 7));
+    if(canConnectToWiFi()) {
+      saveWiFi();
+      connectToWiFi();
+    }
+    shouldRedirect = true;
+  } else if (header.indexOf("GET /wdisconnect") >= 0) {
+    disconnectFromWiFi();
+    shouldRedirect = true;
+  }
 }
 
 void loop(){
@@ -177,79 +216,42 @@ void loop(){
           if (currentLine.length() == 0) {
             // HTTP headers always start with a response code (e.g. HTTP/1.1 200 OK)
             // and a content-type so the client knows what's coming, then a blank line:
+
+            handleWebRequest(header);
+            
             client.println("HTTP/1.1 200 OK");
             client.println("Content-type:text/html");
             client.println("Connection: close");
             client.println();
             
-            // turns the GPIOs on and off
-            if (header.indexOf("GET /led/on") >= 0) {
-              Serial.println("GPIO 4 on");
-              outputLedState = "on";
-              digitalWrite(LED_BUILTIN, LOW);
-            } else if (header.indexOf("GET /led/off") >= 0) {
-              Serial.println("GPIO 4 off");
-              outputLedState = "off";
-              digitalWrite(LED_BUILTIN, HIGH);
-            }
-            
             // Display the HTML web page
             client.println("<!DOCTYPE html><html>");
             client.println("<head><meta name=\"viewport\" content=\"width=device-width, initial-scale=1\">");
             client.println("<link rel=\"icon\" href=\"data:,\">");
-            // CSS to style the on/off buttons 
-            // Feel free to change the background-color and font-size attributes to fit your preferences
-            client.println("<style>html { font-family: Helvetica; display: inline-block; margin: 0px auto;}");
-            client.println("h1 {text-align: center; margin: 16px 0;}");
-            client.println("p {margin: 0; line-height: 32px;}");
-            client.println(".block { width: 280px; margin: 0 auto 10px auto; padding: 5px 10px; border: 1px solid #c0c0c0; background-color: #fafafa;}");
-            client.println(".button { background-color: #195B6A; border: none; color: white; padding: 16px 40px;");
-            client.println("text-decoration: none; font-size: 30px; margin: 2px; cursor: pointer;}");
-            client.println(".button2 {background-color: #77878A;}</style></head>");
-
+            
+            if (shouldRedirect) {
+              client.println("<script>window.location='/';</script>");
+            }
+            
+            renderStyles(client);
             
             // Web Page Heading
             client.print("<body><h1>UCWM ");
             client.print(ver);
             client.println("</h1>");
-            
-renderWebPage(client);
 
-            // Display connection status
-            client.println("<div class='block'>");
-            client.println("<p><b>WiFi Access Point</b></p>");
-            client.println("<p>SSID: " + ssidAP + "</p>");
-            client.print("<p>IP: ");
-            client.print(WiFi.softAPIP());
-            client.println("</p>");
-            client.println("</div>");
+            renderAPConnectionStatus(client, ssidAP, WiFi.softAPIP());
             
             client.println("<div class='block'>");
             client.println("<p><b>WiFi status:</b> " + (isWiFiConnected() ? labelConnected : labelNotConnected) + "</p>");
-            if(isWiFiConnected) {
-              client.println("<p>SSID: " + wifi_ssid + "</p>");
-              client.print("<p>IP: ");
-              client.print(WiFi.localIP());
-              client.println("</p>");
-            }
-            client.println("</div>");
-            
-            client.println("<div class='block'>");
-            client.println("<p><b>Server</b></p>");
-            client.print("<p>HTTP port: ");
-            client.print(webServerPort);
-            client.println("</p>");
-            client.println("<p>WebSocket port: not implemented</p>");
-            client.println("</div>");
-               
-            // Display current state, and ON/OFF buttons for LED 
-            client.println("<p>LED - State " + outputLedState + "</p>");
-            // If the output4State is off, it displays the ON button       
-            if (outputLedState=="off") {
-              client.println("<p><a href=\"/led/on\"><button class=\"button\">ON</button></a></p>");
+            if(isWiFiConnected()) {
+              renderWiFiConnectedForm(client, wifi_ssid, WiFi.localIP());
             } else {
-              client.println("<p><a href=\"/led/off\"><button class=\"button button2\">OFF</button></a></p>");
+              renderWiFiConnectionForm(client);
             }
+            client.println("</div>");
+
+            renderConnectionStatus(client, webServerPort);
             
             client.println("</body></html>");
             
@@ -271,13 +273,5 @@ renderWebPage(client);
     client.stop();
     Serial.println("HTTP Client disconnected.");
     Serial.println("");
-
-    file = SPIFFS.open("wifi_ssid", "w+");
-    file.write("ssidname");
-    file.close();
-    
-    file = SPIFFS.open("wifi_pass", "w+");
-    file.write("password");
-    file.close();
   }
 }
