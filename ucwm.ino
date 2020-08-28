@@ -6,6 +6,7 @@
 
 #include <ESP8266WiFi.h>
 #include "WebServer.h"
+#include "WebClient.h"
 #include "Data.h"
 
 // WiFi AP Config
@@ -40,6 +41,17 @@ const long timeoutTime = 1000;
 // Label variables
 String labelConnected = "Connected";
 String labelNotConnected = "Not connected";
+
+// GPIO
+int a0Value = 0;
+
+// Light variables
+int lightValue = 0;
+int prevLightValue = 0;
+int lightDelta = 0;
+int noiseLevel = 8;
+int lampId = 22;
+
 
 // Get stored data
 void loadInitData() {
@@ -155,6 +167,8 @@ void setup() {
   pinMode(LED_BUILTIN, OUTPUT);
   digitalWrite(LED_BUILTIN, 0);
 
+  pinMode(A0, INPUT);
+
   loadInitData();
   if(canConnectToWiFi()) {
     connectToWiFi();
@@ -238,8 +252,18 @@ void handleWebClient(WiFiClient client, String header) {
 }
 
 void loop(){
+  
+  a0Value = analogRead(A0);
+  lightValue = map(a0Value, 10, 1023, 0, 254);
+  lightDelta = lightValue - prevLightValue;
+  if (lightDelta > noiseLevel || lightDelta < -noiseLevel || (lightValue != prevLightValue && (lightValue == 0 || lightValue == 254))) {
+    Serial.print("lightValue: ");
+    Serial.println(lightValue);
+    prevLightValue = lightValue;
+    setLightLevel(lampId, lightValue);
+  }
+  
   WiFiClient client = server.available();   // Listen for incoming clients
-
   if (client) {
   
   // If a new client connects,
