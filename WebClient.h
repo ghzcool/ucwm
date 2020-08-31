@@ -1,8 +1,9 @@
 #include <ESP8266HTTPClient.h>
 
-String serverName = "http://192.168.1.106:80/";
+String serverName = "http://10.100.1.252/";
 String payload = "";
 int httpResponseCode;
+String res = "";
 
 String sendGetRequest(String url) {
   HTTPClient http;
@@ -17,8 +18,6 @@ String sendGetRequest(String url) {
   if (httpResponseCode > 0) {
     Serial.print("HTTP Response code: ");
     Serial.println(httpResponseCode);
-    payload = http.getString();
-    Serial.println(payload);
   }
   else {
     Serial.print("Error code: ");
@@ -27,7 +26,7 @@ String sendGetRequest(String url) {
   
   http.end();
   if (httpResponseCode > 0) {
-    return payload;
+    return String("ok");
   } else {
     return String("") + httpResponseCode;
   }
@@ -35,8 +34,8 @@ String sendGetRequest(String url) {
 
 void setLightLevel(int lampId, int level) {
   if (level > 0) {
-    sendGetRequest(serverName + String("y") + lampId + String("v") + level);
+    res = sendGetRequest(serverName + String("y") + lampId + String("v") + level);
   } else {
-    sendGetRequest(serverName + String("n") + lampId);
+    res = sendGetRequest(serverName + String("x") + lampId);
   }
 }

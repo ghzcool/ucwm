@@ -45,12 +45,17 @@ String labelNotConnected = "Not connected";
 // GPIO
 int a0Value = 0;
 
+// Millis
+unsigned long startMillis;
+unsigned long currentMillis;
+const unsigned long period = 100;
+
 // Light variables
 int lightValue = 0;
 int prevLightValue = 0;
 int lightDelta = 0;
 int noiseLevel = 8;
-int lampId = 22;
+int lampId = 44;
 
 
 // Get stored data
@@ -159,6 +164,7 @@ void startWebServer() {
 void setup() {
   Serial.begin(9600);
   randomSeed(analogRead(0));
+  startMillis = millis();
   Serial.print("Starting UCWM ");
   Serial.println(ver);
   Serial.println("");
@@ -252,17 +258,6 @@ void handleWebClient(WiFiClient client, String header) {
 }
 
 void loop(){
-  
-  a0Value = analogRead(A0);
-  lightValue = map(a0Value, 10, 1023, 0, 254);
-  lightDelta = lightValue - prevLightValue;
-  if (lightDelta > noiseLevel || lightDelta < -noiseLevel || (lightValue != prevLightValue && (lightValue == 0 || lightValue == 254))) {
-    Serial.print("lightValue: ");
-    Serial.println(lightValue);
-    prevLightValue = lightValue;
-    setLightLevel(lampId, lightValue);
-  }
-  
   WiFiClient client = server.available();   // Listen for incoming clients
   if (client) {
   
@@ -299,5 +294,20 @@ void loop(){
     client.stop();
     Serial.println("HTTP Client disconnected.");
     Serial.println("");
+  }
+  
+  currentMillis = millis();
+  if (currentMillis - startMillis >= period) {
+    a0Value = analogRead(A0);
+    lightValue = map(a0Value, 10, 1023, 0, 254);
+    lightDelta = lightValue - prevLightValue;
+    if (lightDelta > noiseLevel || lightDelta < -noiseLevel || (lightValue != prevLightValue && (lightValue == 0 || lightValue == 254))) {
+      Serial.print("lightValue: ");
+      Serial.println(lightValue);
+      prevLightValue = lightValue;
+      setLightLevel(lampId, lightValue);
+    }
+    
+    startMillis = currentMillis;
   }
 }
